@@ -1,0 +1,120 @@
+**위 프로그램은 한 종목과 하나의 경제지표간의 상관관계를 파악하고 두 변수의 그래프를 보기위해 만들었습니다. **
+
+위에서부터 차래대로 실행 버튼을 클릭하고 첫째 입력창에 학습하고자하는 종목의 티커를 입력하시면 됩니다. 
+두번째 입력은 FRED의 경제 지표 티커를 입력하면 됩니다. 
+
+import pandas as pd
+import numpy as np
+from pandas import Series, DataFrame
+import plotly
+from matplotlib import pyplot as plt
+import seaborn as sns
+
+plt.rcParams["figure.figsize"] = (20,10)
+plt.rcParams['lines.linewidth'] = 2
+plt.rcParams['lines.color'] = 'r'
+plt.rcParams['axes.grid'] = True
+
+pip install yfinance
+
+pip install fredapi
+
+import yfinance as yf
+from fredapi import Fred
+fred = Fred(api_key='e655a942cc90459ed02941ae6bd7367c')
+
+알고 싶은 종목 (야후파이낸스 티커 입력)
+
+print("유동대체투자 상품 입력하세요",'\n', 
+      '부동산: DFREX, VNQ, RWO ','\n',
+      '인프라: GLIFX, IGF', '\n',
+      '원자재: PCRNX, SGDLX, VDE, IYE','\n',
+      '헤지펀드: BDMIX, ADAIX, ABYIX, JHDRX')
+
+liq_alts=input()
+
+관련있는 경제 지표  입력 https://fred.stlouisfed.org/
+여기서 Gross Domestic Product (GDP)<<<이부분 입력
+
+print("경제지표를 입력하세요(FRED 데이터 티커사용)",'\n', 
+      '미국 도시 CPI : CPIAUCSL ','\n',
+      '중국 CPI: CHNCPIALLMINMEI', '\n',
+      '실업률: UNRATE','\n',
+      '미달러/ 유로 환율: DEXUSEU','\n',
+      '중국 위안/ 미달러 환율: DEXCHUS','\n',
+      '미국채 10년 금리: DGS10','\n',
+      '미국채 1년 금리: DGS1','\n',
+      'GDP: GDP','\n',
+      'industrial production: INDPRO','\n',
+      'ICE BofA US High Yield Index Option-Adjusted Spread : BAMLH0A0HYM2')
+econ=input()
+
+#데이터 받기
+liq_alts_df=yf.download(liq_alts, period='MAX')['Adj Close'].fillna(method='pad')
+econ_df=fred.get_series(econ).fillna(method='pad')
+
+#경제지수 데이터의 기간 찾기
+econ_term=econ_df.index[1]-econ_df.index[0]
+
+if econ_term.days >1:
+  if econ_term.days > 7:
+    if econ_term.days > 28:
+      print('경제 지표의 주기는 1달입니다.')
+      t='MS' 
+    else:
+      print('경제 지표의 주기는 1년입니다.')
+      t='YS' 
+  else:
+    print('경제 지표의 주기는 1주입니다.')
+    t='WS'
+else:
+  print('경제 지표의 주기는 1일입니다.')
+  t='D'
+
+#공통 기간 맞추기
+starting_time=max(liq_alts_df.index[0],econ_df.index[0])
+latest_time=min(liq_alts_df.index[-1],econ_df.index[-1])
+liq_alts_df2=liq_alts_df.loc[starting_time:latest_time].resample(t).last().fillna(method='pad')
+econ_df2=econ_df.loc[starting_time:latest_time].resample(t).last().fillna(method='pad')
+
+#두 변수 하나의 DF에 합치기
+corr_df=pd.concat([liq_alts_df2, econ_df2], axis=1).fillna(method='backfill')
+corr_df.columns=[liq_alts, econ]
+
+#단위 통일
+base_value = corr_df.iloc[int(-len(corr_df.index))]
+print(base_value)
+corr_df[liq_alts] = corr_df[liq_alts] / base_value[liq_alts] * 100
+corr_df[econ] = corr_df[econ] / base_value[econ] * 100
+
+#상관관계 표
+print(corr_df.corr())
+
+#상관계수 히트맵
+sns.heatmap(corr_df.corr(), square=True, annot=True, cmap=plt.cm.viridis, linewidths=0.01, linecolor='white')
+plt.show()
+
+# 두변수 그래프 그리기
+liq_alts_df2_min=liq_alts_df2.min()
+liq_alts_df2_max=liq_alts_df2.max()
+econ_df2_min=econ_df2.min()
+econ_df2_max=econ_df2.max()
+
+# 두변수 그래프 그리기
+fig, ax1 = plt.subplots()
+
+ax1.plot(liq_alts_df2, color='green', label=liq_alts)
+ax1.set_ylim(liq_alts_df2_min, liq_alts_df2_max)
+ax1.set_xlabel('Year')
+ax1.set_ylabel(liq_alts)
+ax1.tick_params(axis='both', direction='in')
+
+ax2 = ax1.twinx()
+ax2.plot(econ_df2, color='deeppink', label=econ)
+ax2.set_ylim(econ_df2_min, econ_df2_max)
+#ax2.set_ylabel(r,econ)
+ax2.tick_params(axis='y', direction='in')
+
+ax1.legend(loc='upper left')
+ax2.legend(loc='upper right')
+plt.show()
